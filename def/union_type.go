@@ -131,7 +131,7 @@ func (t *unionType) TranslateToInternal(inputVar string) string {
 }
 
 func ReadUnionTypesFromXML(doc *xmlquery.Node, tr TypeRegistry, vr ValueRegistry, api string) {
-	queryString := fmt.Sprintf("//types/type[@category='union' and (@api='%s' or not(@api))]", api)
+	queryString := fmt.Sprintf("//types/type[@category='union' and ((contains(@api,'%s') and not(@api='vulkansc')) or not(@api))]", api)
 
 	for _, node := range xmlquery.Find(doc, queryString) {
 		s := newUnionTypeFromXML(node, api)
@@ -145,7 +145,7 @@ func newUnionTypeFromXML(node *xmlquery.Node, api string) *unionType {
 	rval.registryName = node.SelectAttr("name")
 	rval.isReturnedOnly = node.SelectAttr("returnedonly") == "true"
 
-	queryString := fmt.Sprintf("member[@api='%s' or not(@api)]", api)
+	queryString := fmt.Sprintf("member[(contains(@api,'%s') and not(@api='vulkansc')) or not(@api)]", api)
 	for _, mNode := range xmlquery.Find(node, queryString) {
 		rval.members = append(rval.members, newStructMemberFromXML(mNode))
 	}

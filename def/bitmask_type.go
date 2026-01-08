@@ -50,7 +50,7 @@ func (t *bitmaskType) PrintPublicDeclaration(w io.Writer) {
 }
 
 func ReadBitmaskTypesFromXML(doc *xmlquery.Node, tr TypeRegistry, vr ValueRegistry, api string) {
-	queryString := fmt.Sprintf("//types/type[@category='bitmask' and (@api='%s' or not(@api))]", api)
+	queryString := fmt.Sprintf("//types/type[@category='bitmask' and ((contains(@api,'%s') and not(@api='vulkansc')) or not(@api))]", api)
 
 	for _, node := range xmlquery.Find(doc, queryString) {
 		newType := NewBitmaskTypeFromXML(node)

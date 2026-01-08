@@ -37,7 +37,7 @@ func (t *includeType) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 }
 
 func ReadIncludeTypesFromXML(doc *xmlquery.Node, tr TypeRegistry, _ ValueRegistry, api string) {
-	queryString := fmt.Sprintf("//types/type[@category='include' and (@api='%s' or @api='')]", api)
+	queryString := fmt.Sprintf("//types/type[@category='include' and ((contains(@api,'%s') and not(@api='vulkansc')) or @api='')]", api)
 
 	for _, node := range xmlquery.Find(doc, queryString) {
 		typ := NewIncludeTypeFromXML(node)

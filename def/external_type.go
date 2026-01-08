@@ -40,7 +40,7 @@ func (t *externalType) TranslateToInternal(inputVar string) string {
 }
 
 func ReadExternalTypesFromXML(doc *xmlquery.Node, tr TypeRegistry, vr ValueRegistry, api string) {
-	queryString := fmt.Sprintf("//types/type[not(@category) and (@api='%s' or not(@api))]", api)
+	queryString := fmt.Sprintf("//types/type[not(@category) and ((contains(@api,'%s') and not(@api='vulkansc')) or not(@api))]", api)
 
 	for _, node := range xmlquery.Find(doc, queryString) {
 		typ := NewExternalTypeFromXML(node)
@@ -114,7 +114,7 @@ func NewOrUpdateExternalValueFromJSON(key, value string, td TypeDefiner, tr Type
 		updatedEntry = existing.(*enumValue)
 	}
 
-	updatedEntry.valueString = value
+	updatedEntry.valueString = convertCLiteralToGo(value)
 	updatedEntry.isCore = true
 
 	vr[key] = updatedEntry
@@ -127,7 +127,13 @@ func (t *externalType) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 	is := t.genericType.Resolve(tr, vr)
 
 	// override naming here so we don't rename keywords like uint32 to asUint32
-	t.publicName = trimVk(t.mappedTypeName)
+	if t.mappedTypeName != "" {
+		t.publicName = trimVk(t.mappedTypeName)
+	} else {
+		// External types without a mappedTypeName (e.g., video codec types from external headers)
+		// use uintptr as a placeholder since we can't know their actual type
+		t.publicName = "uintptr"
+	}
 	t.internalName = t.publicName
 
 	if t.requiresTypeName != "" {

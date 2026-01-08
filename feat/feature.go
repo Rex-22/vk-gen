@@ -1,6 +1,9 @@
 package feat
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/antchfx/xmlquery"
 	"github.com/bbredesen/vk-gen/def"
 )
@@ -52,6 +55,9 @@ func (f *Feature) MergeIncludeSet(is *def.IncludeSet) {
 
 func (f *Feature) Resolve(tr def.TypeRegistry, vr def.ValueRegistry) {
 	for k := range f.requireTypeNames {
+		if tr[k] == nil {
+			continue // Skip types not found in registry
+		}
 		f.MergeIncludeSet(tr[k].Resolve(tr, vr))
 	}
 
@@ -120,10 +126,60 @@ func (f *Feature) FilterByCategory() map[def.TypeCategory]*Feature {
 }
 
 func ReadFeatureFromXML(featureNode *xmlquery.Node, tr def.TypeRegistry, vr def.ValueRegistry) *Feature {
+	if featureNode == nil {
+		return nil
+	}
+
+	// Find the root document by traversing up from featureNode
+	root := featureNode
+	for root.Parent != nil {
+		root = root.Parent
+	}
+
+	visited := make(map[string]bool)
+	return readFeatureFromXMLWithDeps(featureNode, root, tr, vr, visited)
+}
+
+func readFeatureFromXMLWithDeps(featureNode, root *xmlquery.Node, tr def.TypeRegistry, vr def.ValueRegistry, visited map[string]bool) *Feature {
+	if featureNode == nil {
+		return nil
+	}
+
+	featureName := featureNode.SelectAttr("name")
+
+	// Avoid infinite loops from circular dependencies
+	if visited[featureName] {
+		return nil
+	}
+	visited[featureName] = true
+
 	rval := NewFeature()
 	rval.apiName = featureNode.SelectAttr("api")
-	rval.featureName = featureNode.SelectAttr("name")
+	rval.featureName = featureName
 	rval.version = featureNode.SelectAttr("number")
+
+	// Process the "depends" attribute - this is crucial for Vulkan 1.4+
+	// Dependencies can be comma-separated, e.g., "VK_VERSION_1_0,VK_GRAPHICS_VERSION_1_1"
+	depends := featureNode.SelectAttr("depends")
+	if depends != "" {
+		depNames := strings.Split(depends, ",")
+		for _, depName := range depNames {
+			depName = strings.TrimSpace(depName)
+			if depName == "" {
+				continue
+			}
+
+			// Find the dependent feature node
+			xpath := fmt.Sprintf("//feature[@name='%s']", depName)
+			depNode := xmlquery.FindOne(root, xpath)
+			if depNode != nil {
+				depFeature := readFeatureFromXMLWithDeps(depNode, root, tr, vr, visited)
+				if depFeature != nil {
+					rval.MergeWith(depFeature)
+				}
+			}
+		}
+	}
 
 	for _, reqNode := range xmlquery.Find(featureNode, "/require") {
 		for _, typeNode := range xmlquery.Find(reqNode, "/type") {
@@ -159,6 +215,9 @@ func ReadFeatureFromXML(featureNode *xmlquery.Node, tr def.TypeRegistry, vr def.
 func (f *Feature) Name() string { return f.featureName }
 
 func (f *Feature) MergeWith(g *Feature) {
+	if g == nil {
+		return
+	}
 	for k, v := range g.requireTypeNames {
 		f.requireTypeNames[k] = v
 	}

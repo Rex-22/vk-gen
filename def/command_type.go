@@ -690,8 +690,9 @@ func (p *commandParam) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 }
 
 func ReadCommandTypesFromXML(doc *xmlquery.Node, tr TypeRegistry, vr ValueRegistry, api string) {
-	cQueryString := fmt.Sprintf("//commands/command[@api='%s' or not(@api)]", api)
-	exQueryString := fmt.Sprintf("//extension/command[@api='%s' or not(@api)]", api)
+	// Use contains() to match api attributes like "vulkan,vulkanbase" when searching for "vulkan"
+	cQueryString := fmt.Sprintf("//commands/command[(contains(@api,'%s') and not(@api='vulkansc')) or not(@api)]", api)
+	exQueryString := fmt.Sprintf("//extension/command[(contains(@api,'%s') and not(@api='vulkansc')) or not(@api)]", api)
 
 	for _, commandNode := range append(xmlquery.Find(doc, cQueryString), xmlquery.Find(doc, exQueryString)...) {
 		val := NewCommandFromXML(commandNode, api)
@@ -709,7 +710,7 @@ func NewCommandFromXML(elt *xmlquery.Node, api string) *commandType {
 		rval.registryName = xmlquery.FindOne(elt, "/proto/name").InnerText()
 		rval.returnTypeName = xmlquery.FindOne(elt, "/proto/type").InnerText()
 
-		paramQueryString := fmt.Sprintf("param[@api='%s' or not(@api)]", api)
+		paramQueryString := fmt.Sprintf("param[(contains(@api,'%s') and not(@api='vulkansc')) or not(@api)]", api)
 		for _, m := range xmlquery.Find(elt, paramQueryString) {
 			par := NewCommandParamFromXML(m, &rval)
 			rval.parameters = append(rval.parameters, par)

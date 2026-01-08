@@ -120,8 +120,12 @@ func main() {
 	vk1_0 := feat.ReadFeatureFromXML(xmlquery.FindOne(xmlDoc, "//feature[@name='VK_VERSION_1_0']"), globalTypes, globalValues)
 	vk1_1 := feat.ReadFeatureFromXML(xmlquery.FindOne(xmlDoc, "//feature[@name='VK_VERSION_1_1']"), globalTypes, globalValues)
 	vk1_2 := feat.ReadFeatureFromXML(xmlquery.FindOne(xmlDoc, "//feature[@name='VK_VERSION_1_2']"), globalTypes, globalValues)
+	vk1_3 := feat.ReadFeatureFromXML(xmlquery.FindOne(xmlDoc, "//feature[@name='VK_VERSION_1_3']"), globalTypes, globalValues)
+	vk1_4 := feat.ReadFeatureFromXML(xmlquery.FindOne(xmlDoc, "//feature[@name='VK_VERSION_1_4']"), globalTypes, globalValues)
 	vk1_0.MergeWith(vk1_1)
 	vk1_0.MergeWith(vk1_2)
+	vk1_0.MergeWith(vk1_3)
+	vk1_0.MergeWith(vk1_4)
 
 	// Manually include external types
 	vk1_0.MergeIncludeSet(globalTypes.SelectCategory(def.CatExternal))

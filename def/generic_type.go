@@ -5,6 +5,38 @@ import (
 	"io"
 )
 
+// unresolvedType is a placeholder for types that don't exist in the registry
+// (e.g., external video codec types from vk_video headers)
+type unresolvedType struct {
+	genericType
+	originalTypeName string
+}
+
+func NewUnresolvedType(typeName string) *unresolvedType {
+	return &unresolvedType{
+		genericType: genericType{
+			genericNamer: genericNamer{
+				registryName: typeName,
+				publicName:   "uintptr",
+				internalName: "uintptr",
+			},
+		},
+		originalTypeName: typeName,
+	}
+}
+
+func (t *unresolvedType) Category() TypeCategory              { return CatExternal }
+func (t *unresolvedType) IsIdenticalPublicAndInternal() bool  { return true }
+func (t *unresolvedType) Resolve(TypeRegistry, ValueRegistry) *IncludeSet { return NewIncludeSet() }
+func (t *unresolvedType) PrintPublicDeclaration(w io.Writer)  {}
+func (t *unresolvedType) PrintInternalDeclaration(w io.Writer) {}
+func (t *unresolvedType) TranslateToPublic(inputVar string) string {
+	return fmt.Sprintf("(uintptr)(%s) /* unresolved: %s */", inputVar, t.originalTypeName)
+}
+func (t *unresolvedType) TranslateToInternal(inputVar string) string {
+	return fmt.Sprintf("(uintptr)(%s) /* unresolved: %s */", inputVar, t.originalTypeName)
+}
+
 type genericNamer struct {
 	registryName, publicName, internalName string
 }

@@ -3,11 +3,41 @@ package def
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/antchfx/xmlquery"
 	"github.com/sirupsen/logrus"
 )
+
+// convertCLiteralToGo converts C-style literals to Go equivalents
+// Examples: "0.25f" → "0.25", "(~0U)" → "^uint32(0)", "(~1U)" → "^uint32(1)"
+func convertCLiteralToGo(cLiteral string) string {
+	// Remove trailing 'f' or 'F' from float literals
+	if strings.HasSuffix(cLiteral, "f") || strings.HasSuffix(cLiteral, "F") {
+		return strings.TrimSuffix(strings.TrimSuffix(cLiteral, "f"), "F")
+	}
+
+	// Handle (~0U), (~1U), (~0ULL), etc.
+	reUint32 := regexp.MustCompile(`^\(~(\d+)U\)$`)
+	if match := reUint32.FindStringSubmatch(cLiteral); match != nil {
+		return fmt.Sprintf("^uint32(%s)", match[1])
+	}
+
+	reUint64 := regexp.MustCompile(`^\(~(\d+)ULL\)$`)
+	if match := reUint64.FindStringSubmatch(cLiteral); match != nil {
+		return fmt.Sprintf("^uint64(%s)", match[1])
+	}
+
+	// Handle plain ~0U without parentheses
+	reUint32Plain := regexp.MustCompile(`^~(\d+)U$`)
+	if match := reUint32Plain.FindStringSubmatch(cLiteral); match != nil {
+		return fmt.Sprintf("^uint32(%s)", match[1])
+	}
+
+	return cLiteral
+}
 
 type enumValue struct {
 	genericValue
@@ -147,7 +177,7 @@ func NewEnumValueFromXML(td TypeDefiner, elt *xmlquery.Node) *enumValue {
 	alias := elt.SelectAttr("alias")
 	if alias == "" {
 		rval.registryName = elt.SelectAttr("name")
-		rval.valueString = elt.SelectAttr("value")
+		rval.valueString = convertCLiteralToGo(elt.SelectAttr("value"))
 	} else {
 		rval.registryName = elt.SelectAttr("name")
 		rval.aliasValueName = alias
@@ -242,7 +272,7 @@ func NewUntypedEnumValueFromXML(elt *xmlquery.Node) *extenValue {
 	alias := elt.SelectAttr("alias") // I don't think there are any alias entries for this category?
 	if alias == "" {
 		rval.registryName = elt.SelectAttr("name")
-		rval.valueString = elt.SelectAttr("value")
+		rval.valueString = convertCLiteralToGo(elt.SelectAttr("value"))
 	} else {
 		rval.registryName = elt.SelectAttr("name")
 		rval.aliasValueName = alias

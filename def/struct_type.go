@@ -231,6 +231,14 @@ func (m *structMember) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 
 	// This automatically handles non-pointer types, i.e. pointerDepth == 0
 	previousTarget := tr[m.typeRegistryName]
+
+	// Use placeholder type if the type doesn't exist in the registry (e.g., external video codec types)
+	if previousTarget == nil {
+		m.resolvedType = NewUnresolvedType(m.typeRegistryName)
+		rval := NewIncludeSet()
+		return rval
+	}
+
 	for i := m.pointerDepth; i > 0; i-- {
 		pt := pointerType{}
 		pt.pointerDepth = i
@@ -261,11 +269,15 @@ func (m *structMember) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 	rval := NewIncludeSet()
 	rval.IncludeTypes[m.typeRegistryName] = true
 
-	rval.MergeWith(m.resolvedType.Resolve(tr, vr))
+	if m.resolvedType != nil {
+		rval.MergeWith(m.resolvedType.Resolve(tr, vr))
+	}
 
 	if m.valueString != "" {
 		m.resolvedValue = vr[m.valueString]
-		rval.MergeWith(m.resolvedValue.Resolve(tr, vr))
+		if m.resolvedValue != nil {
+			rval.MergeWith(m.resolvedValue.Resolve(tr, vr))
+		}
 	}
 
 	if len(m.lenSpecs) > 0 {
@@ -275,6 +287,9 @@ func (m *structMember) Resolve(tr TypeRegistry, vr ValueRegistry) *IncludeSet {
 }
 
 func (m *structMember) IsIdenticalPublicAndInternal() bool {
+	if m.resolvedType == nil {
+		return false
+	}
 	return m.resolvedValue == nil &&
 		m.resolvedType.IsIdenticalPublicAndInternal() &&
 		m.pointerDepth == 0 &&
@@ -283,6 +298,11 @@ func (m *structMember) IsIdenticalPublicAndInternal() bool {
 }
 
 func (m *structMember) PrintPublicDeclaration(w io.Writer) {
+	// Skip members with unresolved types (e.g., external video codec types)
+	if m.resolvedType == nil {
+		fmt.Fprintf(w, "%s uintptr // Unresolved external type: %s\n", m.PublicName(), m.typeRegistryName)
+		return
+	}
 
 	if m.comment != "" {
 		fmt.Fprintln(w, "// ", m.comment)
@@ -300,6 +320,11 @@ func (m *structMember) PrintPublicDeclaration(w io.Writer) {
 }
 
 func (m *structMember) PrintInternalDeclaration(w io.Writer) {
+	// Skip members with unresolved types (e.g., external video codec types)
+	if m.resolvedType == nil {
+		fmt.Fprintf(w, "%s uintptr // Unresolved external type: %s\n", m.internalName, m.typeRegistryName)
+		return
+	}
 	fmt.Fprintf(w, "%s %s\n", m.InternalName(), m.resolvedType.InternalName())
 }
 
@@ -327,6 +352,12 @@ func (m *structMember) PrintInternalDeclaration(w io.Writer) {
 // struct, which needs to be set to len(slice). This is (maybe) complicated by a few
 // structs having a single length field for multiple arrays.
 func (m *structMember) PrintVulanizeContent(preamble, structDecl, epilogue io.Writer) {
+	// Skip members with unresolved types
+	if m.resolvedType == nil {
+		fmt.Fprintf(structDecl, "  %s : 0, // Unresolved external type: %s\n", m.internalName, m.typeRegistryName)
+		return
+	}
+
 	switch true {
 	case m.resolvedValue != nil: // Edge case 1
 		fmt.Fprintf(structDecl, "  %s : %s,/*c1*/\n", m.InternalName(), m.resolvedValue.PublicName())
@@ -375,6 +406,12 @@ func (m *structMember) PrintVulanizeContent(preamble, structDecl, epilogue io.Wr
 }
 
 func (m *structMember) PrintGoifyContent(preamble, structDecl, epilogue io.Writer) {
+	// Skip members with unresolved types
+	if m.resolvedType == nil {
+		fmt.Fprintf(structDecl, "  %s : 0, // Unresolved external type: %s\n", m.publicName, m.typeRegistryName)
+		return
+	}
+
 	switch true {
 	case m.resolvedValue != nil: // Edge case 1 never happens in returned strucs
 
@@ -423,7 +460,7 @@ func (m *structMember) PrintGoifyContent(preamble, structDecl, epilogue io.Write
 }
 
 func ReadStructTypesFromXML(doc *xmlquery.Node, tr TypeRegistry, vr ValueRegistry, api string) {
-	queryString := fmt.Sprintf("//types/type[@category='struct' and (@api='%s' or not(@api))]", api)
+	queryString := fmt.Sprintf("//types/type[@category='struct' and ((contains(@api,'%s') and not(@api='vulkansc')) or not(@api))]", api)
 
 	for _, node := range xmlquery.Find(doc, queryString) {
 		s := newStructTypeFromXML(node, api)
@@ -437,7 +474,7 @@ func newStructTypeFromXML(node *xmlquery.Node, api string) *structType {
 	rval.registryName = node.SelectAttr("name")
 	rval.isReturnedOnly = node.SelectAttr("returnedonly") == "true"
 
-	queryString := fmt.Sprintf("member[@api='%s' or not(@api)]", api)
+	queryString := fmt.Sprintf("member[(contains(@api,'%s') and not(@api='vulkansc')) or not(@api)]", api)
 	for _, mNode := range xmlquery.Find(node, queryString) {
 		rval.members = append(rval.members, newStructMemberFromXML(mNode))
 	}
