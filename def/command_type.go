@@ -468,31 +468,80 @@ func (t *commandType) PrintPublicDeclaration(w io.Writer) {
 		t.RegistryName(), t.RegistryName(), t.bindingParamCount, t.resolvedReturnType != nil)
 }
 
-func trampStringFromParams(sl []*commandParam) string {
+// cgoTrampolineArgsFromParams generates the argument string for direct C.Trampoline calls.
+// Each argument is converted to C.uintptr_t with pointer wrapping where needed.
+func cgoTrampolineArgsFromParams(sl []*commandParam, bucketSize int) string {
 	sb := &strings.Builder{}
-	for _, param := range sl {
-		if param.resolvedType.Category() == CatPointer {
-			fmt.Fprintf(sb, ", uintptr(unsafe.Pointer(%s))", param.internalName)
+	for i := 0; i < bucketSize; i++ {
+		if i < len(sl) {
+			param := sl[i]
+			if param.resolvedType.Category() == CatPointer {
+				fmt.Fprintf(sb, ", C.uintptr_t(uintptr(unsafe.Pointer(%s)))", param.internalName)
+			} else {
+				fmt.Fprintf(sb, ", C.uintptr_t(%s)", param.internalName)
+			}
 		} else {
-			fmt.Fprintf(sb, ", uintptr(%s)", param.internalName)
+			// Pad with zeros for unused slots
+			fmt.Fprintf(sb, ", 0")
 		}
 	}
 	// Note that the leading ", " is not trimmed
 	return sb.String()
 }
 
-func (t *commandType) printTrampolineCall(w io.Writer, trampParams []*commandParam, returnParam *commandParam) {
-	trampParamsString := trampStringFromParams(trampParams)
+// getTrampolineBucketSize returns the appropriate trampoline size (3, 6, 9, or 12) for the given param count.
+func getTrampolineBucketSize(paramCount int) int {
+	switch {
+	case paramCount <= 3:
+		return 3
+	case paramCount <= 6:
+		return 6
+	case paramCount <= 9:
+		return 9
+	default:
+		return 12
+	}
+}
 
+func (t *commandType) printTrampolineCall(w io.Writer, trampParams []*commandParam, returnParam *commandParam) {
+	bucketSize := getTrampolineBucketSize(len(trampParams))
+	trampArgsString := cgoTrampolineArgsFromParams(trampParams, bucketSize)
+
+	// Lazy-load the Vulkan library and function handle if needed
+	fmt.Fprintf(w, "  initDlHandle()\n")
+	fmt.Fprintf(w, "  if %s.fnHandle == nil {\n", t.RegistryName())
+	fmt.Fprintf(w, "    %s.fnHandle = C.SymbolFromName(dlHandle, unsafe.Pointer(sys_stringToBytePointer(%s.protoName)))\n", t.RegistryName(), t.RegistryName())
+	fmt.Fprintf(w, "  }\n")
+
+	// Generate direct C.Trampoline call - this keeps pointers live during the CGO call
+	// because the uintptr conversion happens in the same expression as the call.
+	// See: https://github.com/bbredesen/go-vk/issues/12
 	if returnParam != nil {
-		if returnParam.resolvedType.IsIdenticalPublicAndInternal() {
-			fmt.Fprintf(w, "  %s = %s(execTrampoline(%s%s))\n", returnParam.publicName, returnParam.resolvedType.PublicName(), t.RegistryName(), trampParamsString)
+		pubName := returnParam.resolvedType.PublicName()
+		// For pointer types (unsafe.Pointer or aliases like PFN_vkVoidFunction),
+		// we need to convert through uintptr first since C.Trampoline returns size_t
+		if pubName == "unsafe.Pointer" || strings.HasPrefix(pubName, "PFN_") {
+			fmt.Fprintf(w, "  %s = %s(unsafe.Pointer(uintptr(C.Trampoline%d(%s.fnHandle%s))))\n",
+				returnParam.publicName, pubName, bucketSize, t.RegistryName(), trampArgsString)
+		} else if returnParam.resolvedType.IsIdenticalPublicAndInternal() {
+			fmt.Fprintf(w, "  %s = %s(C.Trampoline%d(%s.fnHandle%s))\n",
+				returnParam.publicName, pubName, bucketSize, t.RegistryName(), trampArgsString)
 		} else {
-			fmt.Fprintf(w, "  rval := %s(execTrampoline(%s%s))\n", returnParam.resolvedType.InternalName(), t.RegistryName(), trampParamsString)
+			fmt.Fprintf(w, "  rval := %s(C.Trampoline%d(%s.fnHandle%s))\n",
+				returnParam.resolvedType.InternalName(), bucketSize, t.RegistryName(), trampArgsString)
 			fmt.Fprintf(w, "  %s = %s\n", returnParam.publicName, returnParam.resolvedType.TranslateToPublic("rval"))
 		}
 	} else {
-		fmt.Fprintf(w, "  execTrampoline(%s%s)\n", t.RegistryName(), trampParamsString)
+		fmt.Fprintf(w, "  C.Trampoline%d(%s.fnHandle%s)\n", bucketSize, t.RegistryName(), trampArgsString)
+	}
+
+	// Add runtime.KeepAlive calls for pointer parameters to prevent GC from
+	// collecting memory during the CGO call. This is necessary because passing
+	// uintptr_t to C provides no GC guarantees.
+	for _, param := range trampParams {
+		if param.resolvedType.Category() == CatPointer {
+			fmt.Fprintf(w, "  runtime.KeepAlive(%s)\n", param.internalName)
+		}
 	}
 }
 

@@ -57,6 +57,33 @@ func OverrideDefaultVulkanLibrary(nameOrPath string) {
 	overrideLibName = nameOrPath
 }
 
+// initDlHandle lazily initializes the Vulkan library handle.
+// Called by generated command functions before looking up symbols.
+func initDlHandle() {
+	if dlHandle != nil {
+		return
+	}
+	var libName string
+	switch runtime.GOOS {
+	case "windows":
+		libName = "vulkan-1.dll"
+	case "darwin":
+		libName = "libMoltenVK.dylib"
+	case "linux":
+		libName = "libvulkan.so"
+	default:
+		panic("Unsupported GOOS at OpenLibrary: " + runtime.GOOS)
+	}
+
+	if overrideLibName != "" {
+		libName = overrideLibName
+	}
+
+	cstr := C.CString(libName)
+	dlHandle = C.OpenLibrary(cstr)
+	C.free(unsafe.Pointer(cstr))
+}
+
 func execTrampoline(cmd *vkCommand, args ...uintptr) uintptr {
 	if dlHandle == nil {
 		var libName string

@@ -218,6 +218,12 @@ func printCategory(tc def.TypeCategory, fc *feat.Feature, platform *feat.Platfor
 
 	fmt.Fprintf(f, fileHeader, inFileName, time.Now())
 
+	// Command files need CGO import for direct C.Trampoline* calls
+	// This must come before other imports and has special format
+	if tc == def.CatCommand {
+		fmt.Fprintf(f, "// #include \"dlload.h\"\nimport \"C\"\n\n")
+	}
+
 	if platform != nil && len(platform.GoImports) > 0 {
 		fmt.Fprintf(f, "import (\n")
 		for _, i := range platform.GoImports {
