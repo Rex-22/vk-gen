@@ -538,6 +538,12 @@ func (t *commandType) printTrampolineCall(w io.Writer, trampParams []*commandPar
 	// Add runtime.KeepAlive calls for pointer parameters to prevent GC from
 	// collecting memory during the CGO call. This is necessary because passing
 	// uintptr_t to C provides no GC guarantees.
+	//
+	// Note: We use runtime.KeepAlive instead of runtime.Pinner (Go 1.21+) because:
+	// 1. KeepAlive is simpler - no paired Pin/Unpin calls needed
+	// 2. Go's GC doesn't move objects, so pinning to prevent movement is unnecessary
+	// 3. We only need to prevent collection during the C call, not across goroutines
+	// 4. KeepAlive is the idiomatic approach for CGO boundary safety
 	for _, param := range trampParams {
 		if param.resolvedType.Category() == CatPointer {
 			// Always keep alive the internal pointer that was passed to the trampoline
