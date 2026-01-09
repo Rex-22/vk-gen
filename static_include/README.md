@@ -1,9 +1,9 @@
-# go-vk - Vulkan 1.3 supporting Windows and Mac
+# go-vk - Vulkan 1.4 supporting Windows, Mac, and Linux
 
-***This package is in a beta state right now!*** It has been tested on Windows and Mac. Please report any bugs you find!
+***This package is in a beta state right now!*** It has been tested on Windows, Mac, and Linux. Please report any bugs you find!
 
 go-vk is a Go-langauge (and Go-style) binding around the Vulkan graphics API. Rather than just slapping a Cgo wrapper
-around everything, Vulkan's functions, structures and other types have been translated to a Go-style API. For example, 
+around everything, Vulkan's functions, structures, and other types have been translated to a Go-style API. For example,
 "native" Vulkan returns any resources you request in pointers your program passes into Vulkan. This allows
 Vulkan to (generally) return a VkResult success or error code from the C function call. However, in Go, we have the
 luxury of multiple return values, so this:
@@ -61,7 +61,7 @@ if devices, err := vk.EnumeratePhysicalDevices(myInstance); err != nil {
 ```
 
 But there's more! Passing multiple values to a Vulkan command requires a pointer and count parameter, and sometimes
-that count parameter is embedded in another struct. You can make life a little easier with C++'s `std::vector`. 
+that count parameter is embedded in another struct. You can make life a little easier with C++'s `std::vector`.
 For example, specifying requested extensions at instance creation:
 
 ```C++
@@ -100,12 +100,12 @@ executing vk-gen. **This repository does not get direct modifications!** Any bug
 ## Usage
 
 Ensure that your GPU supports Vulkan and that a Vulkan library is installed in your system-default library location
-(e.g., C:\windows\system32\vulkan-1.dll on Windows). This package uses Cgo to call Vulkan, so it needs to be enabled in 
+(e.g., C:\windows\system32\vulkan-1.dll on Windows). This package uses Cgo to call Vulkan, so it needs to be enabled in
 your Go settings.
 
 `$ go get github.com/bbredesen/go-vk@latest`
 
-Builds for Vulkan API versions 1.1, 1.2, 1.3 (and future releases) will be tagged as releases of go-vk with matching
+Builds for Vulkan API versions 1.1, 1.2, 1.3, 1.4 (and future releases) will be tagged as releases of go-vk with matching
 version numbers, if you want to use a specific version of the API. go-vk does not itself require the Vulkan SDK be installed,
 as it reads symbols from the system-default Vulkan library at runtime. However, you will need the SDK installed to use
 validation layers, shader compilers, etc. during development.
@@ -114,56 +114,56 @@ validation layers, shader compilers, etc. during development.
 package main
 
 import (
-    "github.com/bbredesen/go-vk"
+  "github.com/bbredesen/go-vk"
 )
 // Notice that you don't need to alias the import, it is already bound to the "vk" namespace
 
 func main() {
-    if encodedVersion, err := vk.EnumerateInstanceVersion(); err != nil {
-        // Returned errors are vk.Results. You can directly compare err those 
-        // predefined values to determine which error occured.
-        // The string returned by Error() is the name of the code. For example,
-        // vk.ERROR_OUT_OF_DATE_KHR.Error() == "ERROR_OUT_OF_DATE_KHR"
-        fmt.Printf("EnumerateInstanceVersion failed! Error code was %s\n", err.Error())
-        os.Exit(1)
-    } else {
-        fmt.Printf("Installed Vulkan version: %d.%d.%d\n", 
-            vk.API_VERSION_MAJOR(encodedVersion), 
-            vk.API_VERSION_MINOR(encodedVersion), 
-            vk.API_VERSION_PATCH(encodedVersion),
-        )
+  if encodedVersion, err := vk.EnumerateInstanceVersion(); err != nil {
+    // Returned errors are vk.Results. You can directly compare err those 
+    // predefined values to determine which error occured.
+    // The string returned by Error() is the name of the code. For example,
+    // vk.ERROR_OUT_OF_DATE_KHR.Error() == "ERROR_OUT_OF_DATE_KHR"
+    fmt.Printf("EnumerateInstanceVersion failed! Error code was %s\n", err.Error())
+    os.Exit(1)
+  } else {
+    fmt.Printf("Installed Vulkan version: %d.%d.%d\n",
+      vk.API_VERSION_MAJOR(encodedVersion),
+      vk.API_VERSION_MINOR(encodedVersion),
+      vk.API_VERSION_PATCH(encodedVersion),
+    )
+  }
+
+  // Also notice that you don't need to set the StructureType field on your Go structs. 
+  // In fact, the sType field doesn't even exist on the public side of the binding...it is automatically
+  // added when you pass your struct through to a command.
+  appInfo := vk.ApplicationInfo{
+    ApplicationName:    "Example App",
+    ApplicationVersion: vk.MAKE_VERSION(1, 0, 0),
+    EngineVersion:      vk.MAKE_VERSION(1, 0, 0),
+    ApiVersion:         vk.MAKE_VERSION(1, 4, 0),
+  }
+
+  icInfo := vk.InstanceCreateInfo{
+    ApplicationInfo:       appInfo,
+    // Extension names are built into the binding as const strings.
+    EnabledExtensionNames: []string{vk.KHR_SURFACE_EXTENSION_NAME, vk.KHR_WIN32_SURFACE_EXTENSION_NAME},
+    // Layer names are not built in, unfortunately...layers are not part of the core API spec and names are not present in vk.xml
+    EnabledLayerNames:     []string{"VK_LAYER_KHRONOS_validation"},
+  }
+
+  instance, err := vk.CreateInstance(&icInfo, nil)
+  // vk.SUCCESS is defined as nil, so you can also check for an error like this if preferred.
+  if err != vk.SUCCESS {
+    fmt.Printf("Failed to create Vulkan instance, error code was %s\n", err.Error())
+    if err == vk.ERROR_INCOMPATIBLE_DRIVER {
+      /* ... */
     }
+  }
+  fmt.Printf("Vulkan instance created, handle value is 0x%x\n", instance)
 
-    // Also notice that you don't need to set the StructureType field on your Go structs. 
-    // In fact, the sType field doesn't even exist on the public side of the binding...it is automatically
-    // added when you pass your struct through to a command.
-    appInfo := vk.ApplicationInfo{
-		ApplicationName:    "Example App",
-		ApplicationVersion: vk.MAKE_VERSION(1, 0, 0),
-		EngineVersion:      vk.MAKE_VERSION(1, 0, 0),
-		ApiVersion:         vk.MAKE_VERSION(1, 3, 0),
-	}
-
-	icInfo := vk.InstanceCreateInfo{
-		ApplicationInfo:       appInfo,
-        // Extension names are built into the binding as const strings.
-		EnabledExtensionNames: []string{vk.KHR_SURFACE_EXTENSION_NAME, vk.KHR_WIN32_SURFACE_EXTENSION_NAME},
-        // Layer names are not built in, unfortunately...layers are not part of the core API spec and names are not present in vk.xml
-		EnabledLayerNames:     []string{"VK_LAYER_KHRONOS_validation"},
-	}
-
-	instance, err := vk.CreateInstance(&icInfo, nil)
-    // vk.SUCCESS is defined as nil, so you can also check for an error like this if preferred.
-    if err != vk.SUCCESS {
-        fmt.Printf("Failed to create Vulkan instance, error code was %s\n", err.Error())
-        if err == vk.ERROR_INCOMPATIBLE_DRIVER { 
-            /* ... */
-        }
-    }
-    fmt.Printf("Vulkan instance created, handle value is 0x%x\n", instance)
-
-    // Clean up after yourself before exiting!
-    vk.DestroyInstance(instance)
+  // Clean up after yourself before exiting!
+  vk.DestroyInstance(instance)
 }
 ```
 
@@ -190,7 +190,7 @@ from a length and pointer field and create strings from null-terminated byte arr
 structs that are returned by the API, but Goify is implemented on all structs.
 
 Note that you should never need to directly call Vulkanize() or Goify() (with one expection, noted below). Conversions are
-automatically handled in the background when you call a Vulkan command. 
+automatically handled in the background when you call a Vulkan command.
 
 ### Extended Structs
 If you use pNext to extend any structures, you will need to manually build the chain by calling Vulkanize() and setting the returned pointer in the
@@ -198,12 +198,12 @@ base struct.
 
 ```go
 instanceCI := vk.InstanceCreateInfo{
-    // ...
+// ...
 }
 
 validationFeatures := vk.ValidationFeaturesEXT{
-    PEnabledValidationFeatures: []vk.ValidationFeatureEnableEXT{vk.VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT}
-    // ...
+PEnabledValidationFeatures: []vk.ValidationFeatureEnableEXT{vk.VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT}
+// ...
 }
 
 instanceCI.PNext = unsafe.Pointer(validationFeatures.Vulkanize())
@@ -231,7 +231,7 @@ than 1.18 (and hence do not have access to generics). In that case you could ven
 delete the two generic functions.
 
 **There are no guardrails on any of these functions! You, the developer, are repsonbile for allocating enough memory
-at the destination before calling them.** 
+at the destination before calling them.**
 
 They do not (and cannot) check how much space is available behind the pointer you give them. Under the hood, they create "fake"
 byte slices at the destination pointer and the source pointer or at the head of the input slice. It then uses Go's copy macro

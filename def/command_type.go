@@ -540,7 +540,16 @@ func (t *commandType) printTrampolineCall(w io.Writer, trampParams []*commandPar
 	// uintptr_t to C provides no GC guarantees.
 	for _, param := range trampParams {
 		if param.resolvedType.Category() == CatPointer {
+			// Always keep alive the internal pointer that was passed to the trampoline
 			fmt.Fprintf(w, "  runtime.KeepAlive(%s)\n", param.internalName)
+
+			// If this parameter was translated via Vulkanize() from a singular struct input,
+			// we must also keep alive the original struct. The internal struct may contain
+			// pointers to data within the original struct, so the original must not be
+			// collected until after the Vulkan call completes.
+			if param.requiresTranslation && param.isInput && param.isConstParam && !param.isPublicSlice {
+				fmt.Fprintf(w, "  runtime.KeepAlive(%s)\n", param.publicName)
+			}
 		}
 	}
 }
